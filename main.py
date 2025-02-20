@@ -1,20 +1,38 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import json
+import threading
+from flask import Flask, request, jsonify
+import requests
 
-# Store data in session state
+# Storage for incoming data
 if "data_store" not in st.session_state:
     st.session_state.data_store = {}
 
+# Flask API to receive data
+app = Flask(__name__)
+
+@app.route("/send_data", methods=["POST"])
+def receive_data():
+    data = request.json  # Get JSON payload
+    if "category" in data and "value" in data:
+        st.session_state.data_store[data["category"]] = data["value"]
+        return jsonify({"message": "Data received", "data": st.session_state.data_store}), 200
+    return jsonify({"error": "Invalid data format"}), 400
+
+# Run Flask API in a separate thread
+def run_flask():
+    app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False)
+
+thread = threading.Thread(target=run_flask, daemon=True)
+thread.start()
+
+# Streamlit UI
 st.title("Live Data Bar Chart")
 
-# Endpoint to receive data via Streamlit API
-def receive_data():
-    st.subheader("Received Data")
-    st.write(st.session_state.data_store)
+st.write("Send data using a local script via `http://your-deployed-app-url/send_data`")
 
-# Streamlit UI to display chart
+# Display data in a bar chart
 def show_chart():
     if not st.session_state.data_store:
         st.warning("No data available")
@@ -24,22 +42,4 @@ def show_chart():
     fig = px.bar(df, x="Category", y="Value", title="Live Data Bar Chart")
     st.plotly_chart(fig, use_container_width=True)
 
-# Create a simple API endpoint in Streamlit
-st.write("Send data using the local script.")
-
-# Show live chart
 show_chart()
-
-# Expose API-like functionality
-st.sidebar.header("Data Receiver")
-new_data = st.sidebar.text_area("Paste JSON data here and submit manually:")
-
-if st.sidebar.button("Submit Data"):
-    try:
-        json_data = json.loads(new_data)
-        st.session_state.data_store[json_data["category"]] = json_data["value"]
-        st.sidebar.success("Data added successfully!")
-    except Exception as e:
-        st.sidebar.error(f"Invalid JSON format: {e}")
-
-receive_data()
