@@ -1,32 +1,45 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-import plotly.graph_objs as go
-import uvicorn
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+import json
 
-app = FastAPI()
+# Store data in session state
+if "data_store" not in st.session_state:
+    st.session_state.data_store = {}
 
-# In-memory storage (use a database for persistence)
-data_store = {}
+st.title("Live Data Bar Chart")
 
-class DataItem(BaseModel):
-    category: str
-    value: float
+# Endpoint to receive data via Streamlit API
+def receive_data():
+    st.subheader("Received Data")
+    st.write(st.session_state.data_store)
 
-@app.post("/send_data/")
-def receive_data(item: DataItem):
-    """Receive data and store it"""
-    data_store[item.category] = item.value
-    return {"message": "Data received", "data": data_store}
+# Streamlit UI to display chart
+def show_chart():
+    if not st.session_state.data_store:
+        st.warning("No data available")
+        return
+    
+    df = pd.DataFrame(list(st.session_state.data_store.items()), columns=["Category", "Value"])
+    fig = px.bar(df, x="Category", y="Value", title="Live Data Bar Chart")
+    st.plotly_chart(fig, use_container_width=True)
 
-@app.get("/")
-def get_chart():
-    """Generate a bar chart from stored data"""
-    if not data_store:
-        raise HTTPException(status_code=404, detail="No data available")
+# Create a simple API endpoint in Streamlit
+st.write("Send data using the local script.")
 
-    fig = go.Figure([go.Bar(x=list(data_store.keys()), y=list(data_store.values()))])
-    fig.update_layout(title="Live Data Bar Chart", xaxis_title="Category", yaxis_title="Value")
-    return fig.to_html(full_html=False)
+# Show live chart
+show_chart()
 
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+# Expose API-like functionality
+st.sidebar.header("Data Receiver")
+new_data = st.sidebar.text_area("Paste JSON data here and submit manually:")
+
+if st.sidebar.button("Submit Data"):
+    try:
+        json_data = json.loads(new_data)
+        st.session_state.data_store[json_data["category"]] = json_data["value"]
+        st.sidebar.success("Data added successfully!")
+    except Exception as e:
+        st.sidebar.error(f"Invalid JSON format: {e}")
+
+receive_data()
